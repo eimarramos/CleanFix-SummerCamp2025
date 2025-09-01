@@ -56,122 +56,6 @@ namespace WebApi.Controllers
             var mensajeLower = request.Mensaje.ToLowerInvariant();
             bool esFactura = mensajeLower.Contains("factura") || mensajeLower.Contains("pdf") || mensajeLower.Contains("enviar factura") || mensajeLower.Contains("descargar factura");
 
-            // --- PRIORIDAD: FACTURA ---
-            if (esFactura)
-            {
-                // Extracción robusta de empresa y materiales por nombre (igual que materiales)
-                string empresaNombre = null;
-                var materialesNombres = new List<string>();
-
-                // Buscar empresa: solo hasta 'y', ',', 'material' o final
-                var empresaRegex = System.Text.RegularExpressions.Regex.Match(request.Mensaje, @"empresa\s+([a-zA-Z0-9áéíóúÁÉÍÓÚüÜñÑ]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                if (empresaRegex.Success)
-                {
-                    empresaNombre = empresaRegex.Groups[1].Value.Trim();
-                }
-
-                // Buscar materiales: permite varios materiales separados por 'y', ',' o 'material'
-                var materialesRegex = System.Text.RegularExpressions.Regex.Match(request.Mensaje, @"material(?:es)?\s+([a-zA-Z0-9áéíóúÁÉÍÓÚüÜñÑ ,y]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                if (materialesRegex.Success)
-                {
-                    var nombres = materialesRegex.Groups[1].Value
-                        .Split(new[] {',', 'y'}, StringSplitOptions.RemoveEmptyEntries)
-                        .Select(x => x.Trim())
-                        .Where(x => !string.IsNullOrWhiteSpace(x))
-                        .ToList();
-                    materialesNombres.AddRange(nombres);
-                }
-
-                // Si no se encuentra empresa, fallback a AssistantService
-                if (string.IsNullOrEmpty(empresaNombre))
-                {
-                    var respuesta = await _assistantService.ProcesarMensajeAsync(request.Mensaje, historial);
-                    var pdfUrl = "/api/chatboxia/factura/pdf";
-                    return Ok(new MensajeResponse
-                    {
-                        Success = true,
-                        Error = null,
-                        Data = new {
-                            mensaje = respuesta,
-                            pdfUrl = pdfUrl,
-                            puedeEnviarEmail = true,
-                            sugerencia = "¿Quieres descargarla o recibirla por email?"
-                        }
-                    });
-                }
-
-                // Normaliza el nombre de empresa igual que en la búsqueda de empresas
-                string Normalizar(string s) => s.Trim().ToLower().Replace("empresa", "").Trim();
-                var dbPlugin = new DBPluginTestPG(_connectionString);
-                var empresasResponse = dbPlugin.GetAllEmpresas();
-                var empresa = empresasResponse.Data?.FirstOrDefault(e =>
-                    string.Equals(e.Name.Trim(), empresaNombre, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(Normalizar(e.Name), Normalizar(empresaNombre), StringComparison.OrdinalIgnoreCase)
-                );
-                if (empresa == null)
-                {
-                    return Ok(new MensajeResponse
-                    {
-                        Success = false,
-                        Error = null,
-                        Data = new { mensaje = $"No se encontró ninguna empresa con el nombre '{empresaNombre}'." }
-                    });
-                }
-
-                // Si hay empresa pero NO hay materiales, sugerir materiales y NO generar factura
-                if (materialesNombres.Count == 0)
-                {
-                    var materialesResponse = dbPlugin.GetAllMaterials();
-                    var sugeridos = materialesResponse.Data?.Take(4).ToList() ?? new List<MaterialIa>();
-                    var sugerencia = $"No has seleccionado materiales, te recomiendo estos: Materiales: " + string.Join(", ", sugeridos.Select(m => $"{m.Name} - €{m.Cost:F2}"));
-                    return Ok(new MensajeResponse
-                    {
-                        Success = true,
-                        Error = null,
-                        Data = new {
-                            mensaje = $"Factura:\nEmpresa: {empresa.Name}\n{sugerencia}"
-                        }
-                    });
-                }
-
-                // Llama a la lógica real de generación de factura
-                var facturaRequest = new FacturaRequest { EmpresaNombre = empresa.Name, MaterialesNombres = materialesNombres };
-                var facturaResult = GenerarFactura(facturaRequest) as OkObjectResult;
-                if (facturaResult?.Value is FacturaResponse facturaResponse && facturaResponse.Success && facturaResponse.Factura != null)
-                {
-                    var desglose = FormatearFactura(facturaResponse.Factura);
-                    var pdfUrl = "/api/chatboxia/factura/pdf";
-                    return Ok(new MensajeResponse
-                    {
-                        Success = true,
-                        Error = null,
-                        Data = new {
-                            mensaje = desglose,
-                            pdfUrl = pdfUrl,
-                            puedeEnviarEmail = true,
-                            sugerencia = "¿Quieres descargarla o recibirla por email?"
-                        }
-                    });
-                }
-                else
-                {
-                    // Si no se puede generar, fallback
-                    var respuesta = await _assistantService.ProcesarMensajeAsync(request.Mensaje, historial);
-                    var pdfUrl = "/api/chatboxia/factura/pdf";
-                    return Ok(new MensajeResponse
-                    {
-                        Success = true,
-                        Error = null,
-                        Data = new {
-                            mensaje = respuesta,
-                            pdfUrl = pdfUrl,
-                            puedeEnviarEmail = true,
-                            sugerencia = "¿Quieres descargarla o recibirla por email?"
-                        }
-                    });
-                }
-            }
-
             // --- FILTRO: empresas de tipo X ---
             if ((mensajeLower.Contains("empresa") || mensajeLower.Contains("empresas")) && mensajeLower.Contains("tipo"))
             {
@@ -196,6 +80,146 @@ namespace WebApi.Controllers
                         Success = true,
                         Error = null,
                         Data = new { mensaje = $"Empresas de tipo {tipoId}: {listado}" }
+                    });
+                }
+            }
+
+            // --- 1. TODAS LAS EMPRESAS: Mensaje personalizado ---
+            if (
+                (mensajeLower.Contains("todas las empresas") || mensajeLower.Trim() == "empresas" || mensajeLower.Contains("lista de empresas") || mensajeLower.Contains("dame todas las empresas"))
+                && !esFactura
+            )
+            {
+                return Ok(new MensajeResponse
+                {
+                    Success = true,
+                    Error = null,
+                    Data = new { mensaje = "No puedo darte todas las empresas, pero puedo mostrarte las de un tipo concreto. ¿Qué tipo quieres?" }
+                });
+            }
+
+            // --- PRIORIDAD: FACTURA ---
+            if (esFactura)
+            {
+                string empresaNombre = null;
+                var materialesNombres = new List<string>();
+
+                var empresaRegex = System.Text.RegularExpressions.Regex.Match(request.Mensaje, @"empresa\s+([a-zA-Z0-9áéíóúÁÉÍÓÚüÜñÑ]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (empresaRegex.Success)
+                {
+                    empresaNombre = empresaRegex.Groups[1].Value.Trim();
+                }
+
+                var materialesRegex = System.Text.RegularExpressions.Regex.Match(request.Mensaje, @"material(?:es)?\s+([a-zA-Z0-9áéíóúÁÉÍÓÚüÜñÑ ,y]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (materialesRegex.Success)
+                {
+                    var nombres = materialesRegex.Groups[1].Value
+                        .Split(new[] {',', 'y'}, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(x => x.Trim())
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .ToList();
+                    materialesNombres.AddRange(nombres);
+                }
+
+                if (string.IsNullOrEmpty(empresaNombre))
+                {
+                    var respuesta = await _assistantService.ProcesarMensajeAsync(request.Mensaje, historial);
+                    var pdfUrl = "/api/chatboxia/factura/pdf";
+                    var mensajeFinal = respuesta;
+                    if (!string.IsNullOrWhiteSpace(respuesta) && respuesta.ToLower().Contains("factura"))
+                        mensajeFinal += "\n\n¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?";
+                    return Ok(new MensajeResponse
+                    {
+                        Success = true,
+                        Error = null,
+                        Data = new {
+                            mensaje = mensajeFinal,
+                            pdfUrl = pdfUrl,
+                            puedeEnviarEmail = true,
+                            sugerencia = "¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?"
+                        }
+                    });
+                }
+
+                string Normalizar(string s) => s.Trim().ToLower().Replace("empresa", "").Trim();
+                var dbPlugin = new DBPluginTestPG(_connectionString);
+                var empresasResponse = dbPlugin.GetAllEmpresas();
+                var empresa = empresasResponse.Data?.FirstOrDefault(e =>
+                    string.Equals(e.Name.Trim(), empresaNombre, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Normalizar(e.Name), Normalizar(empresaNombre), StringComparison.OrdinalIgnoreCase)
+                );
+                if (empresa == null)
+                {
+                    return Ok(new MensajeResponse
+                    {
+                        Success = false,
+                        Error = null,
+                        Data = new { mensaje = $"No se encontró ninguna empresa con el nombre '{empresaNombre}'." }
+                    });
+                }
+
+                // Si hay empresa pero NO hay materiales, mostrar factura estructurada solo con empresa y sugerir materiales
+                if (materialesNombres.Count == 0)
+                {
+                    var materialesResponse = dbPlugin.GetAllMaterials();
+                    var sugeridos = materialesResponse.Data?.Take(4).ToList() ?? new List<MaterialIa>();
+                    var factura = new FacturaDetalleDto
+                    {
+                        Empresa = new FacturaEmpresaDto { Nombre = empresa.Name, Coste = empresa.Price },
+                        Materiales = new List<FacturaMaterialDto>(),
+                        TotalConIVA = Math.Round(empresa.Price * 1.21m, 2)
+                    };
+                    var desglose = FormatearFactura(factura);
+                    var sugerencia = "No has seleccionado materiales, te recomiendo estos: " + string.Join(", ", sugeridos.Select(m => $"{m.Name} - €{m.Cost:F2}"));
+                    var mensajeFinal = desglose + "\n" + sugerencia + "\n\n¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?";
+                    return Ok(new MensajeResponse
+                    {
+                        Success = true,
+                        Error = null,
+                        Data = new {
+                            mensaje = mensajeFinal,
+                            sugerencia = "¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?"
+                        }
+                    });
+                }
+
+                // Llama a la lógica real de generación de factura
+                var facturaRequest = new FacturaRequest { EmpresaNombre = empresa.Name, MaterialesNombres = materialesNombres };
+                var facturaResult = GenerarFactura(facturaRequest) as OkObjectResult;
+                if (facturaResult?.Value is FacturaResponse facturaResponse && facturaResponse.Success && facturaResponse.Factura != null)
+                {
+                    var desglose = FormatearFactura(facturaResponse.Factura);
+                    var pdfUrl = "/api/chatboxia/factura/pdf";
+                    var mensajeFinal = desglose + "\n\n¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?";
+                    return Ok(new MensajeResponse
+                    {
+                        Success = true,
+                        Error = null,
+                        Data = new {
+                            mensaje = mensajeFinal,
+                            pdfUrl = pdfUrl,
+                            puedeEnviarEmail = true,
+                            sugerencia = "¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?"
+                        }
+                    });
+                }
+                else
+                {
+                    var respuesta = await _assistantService.ProcesarMensajeAsync(request.Mensaje, historial);
+                    var pdfUrl = "/api/chatboxia/factura/pdf";
+                    var mensajeFinal = respuesta;
+                    if (!string.IsNullOrWhiteSpace(respuesta) && respuesta.ToLower().Contains("factura"))
+                        mensajeFinal += "\n\n¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?";
+                    return Ok(new MensajeResponse
+                    {
+                        Success = true,
+                        Error = null,
+                        Data = new {
+                            mensaje = mensajeFinal,
+                            pdfUrl = pdfUrl,
+                            puedeEnviarEmail = true,
+                            sugerencia = "¿Quieres descargarla en formato PDF o prefieres que te la envíe por correo?"
+                        }
                     });
                 }
             }
