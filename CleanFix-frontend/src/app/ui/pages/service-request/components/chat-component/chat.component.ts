@@ -20,9 +20,21 @@ import { ChatService } from 'src/app/ui/services/chat/chat.service'
   styleUrls: ['./chat.component.css'],
 })
 export class ChatComponent {
+  // Devuelve true si el mensaje en el índice i es el último mensaje del bot
+  isLastBotMessage(index: number): boolean {
+    const msgs = this.messages()
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].from === 'bot') {
+        return i === index
+      }
+    }
+    return false
+  }
   showDownloadButton = signal(false)
   facturaData = signal<{ empresaNombre: string; materialesNombres: string[] } | null>(null)
   pdfUrl: string | null = null
+  mostrarEmailInput = false
+  emailDestino = ''
   // Eliminar el efecto signal para evitar scroll al escribir
   @ViewChild('chatScroll', { static: false }) chatScroll!: ElementRef<HTMLDivElement>
   // ...existing code...
@@ -112,29 +124,38 @@ export class ChatComponent {
   }
 
   private extractEmpresaNombre(): string {
-    // Buscar en todos los mensajes del usuario, desde el más antiguo al más reciente
-    const userMsgs = this.messages()
-      .filter((m) => m.from === 'user')
+    // Buscar en el último mensaje del bot que contenga "Empresa:"
+    const botMsgs = this.messages()
+      .filter((m) => m.from === 'bot')
       .map((m) => m.text)
-    for (let i = userMsgs.length - 1; i >= 0; i--) {
-      const match = userMsgs[i].match(/empresa\s+([\w\d]+)/i)
-      if (match) return match[1]
+    for (let i = botMsgs.length - 1; i >= 0; i--) {
+      const match = botMsgs[i].match(/Empresa:\s*([\w\sáéíóúÁÉÍÓÚüÜñÑ-]+)/i)
+      if (match) return match[1].trim()
     }
     return ''
   }
 
   private extractMaterialesNombres(): string[] {
-    // Buscar en todos los mensajes del usuario, desde el más antiguo al más reciente
-    const userMsgs = this.messages()
-      .filter((m) => m.from === 'user')
+    // Buscar en el último mensaje del bot que contenga "Materiales:"
+    const botMsgs = this.messages()
+      .filter((m) => m.from === 'bot')
       .map((m) => m.text)
-    const materiales: string[] = []
-    for (let i = userMsgs.length - 1; i >= 0; i--) {
-      const matches = [...userMsgs[i].matchAll(/material\s+([\w\d]+)/gi)]
-      materiales.push(...matches.map((m) => m[1]))
+    for (let i = botMsgs.length - 1; i >= 0; i--) {
+      // Extraer la sección de materiales entre "Materiales:" y "IVA"
+      const match = botMsgs[i].match(/Materiales:\s*([\s\S]*?)IVA/i)
+      if (match) {
+        // Separar por " - " y extraer solo el nombre antes del símbolo de euro
+        return match[1]
+          .split(' - ')
+          .map((m) => {
+            // Eliminar etiquetas HTML, guiones, espacios y coste
+            const nombreMatch = m.match(/([\wáéíóúÁÉÍÓÚüÜñÑ]+)\s*€/)
+            return nombreMatch ? nombreMatch[1].trim() : ''
+          })
+          .filter((m) => m.length > 0)
+      }
     }
-    // Eliminar duplicados
-    return Array.from(new Set(materiales))
+    return []
   }
 
   goHome() {
@@ -180,6 +201,34 @@ export class ChatComponent {
       })
       .catch(() => {
         alert('No se pudo descargar la factura')
+      })
+  }
+
+  enviarFacturaPorEmail() {
+    const data = this.facturaData()
+    if (!data || !this.emailDestino) {
+      alert('Debes introducir un email válido')
+      return
+    }
+    fetch('https://localhost:7096/api/chatboxia/factura/gmail', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        empresaNombre: data.empresaNombre,
+        materialesNombres: data.materialesNombres,
+        emailDestino: this.emailDestino,
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Error al enviar la factura por email')
+        alert('Factura enviada correctamente')
+        this.mostrarEmailInput = false
+        this.emailDestino = ''
+      })
+      .catch(() => {
+        alert('No se pudo enviar la factura por email')
       })
   }
 }
