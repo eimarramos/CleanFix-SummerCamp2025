@@ -20,14 +20,14 @@ public class SolicitationConfiguration : IEntityTypeConfiguration<Solicitation>
             .HasMaxLength(300)
             .HasComment("Dirección donde se solicita el servicio");
 
-        builder.Property(s => s.MaintenanceCost)
-            .IsRequired()
-            .HasPrecision(18, 2)
-            .HasComment("Costo de mantenimiento asociado a la solicitud");
-
         builder.Property(s => s.IssueTypeId)
             .IsRequired()
             .HasComment("Id del tipo de incidencia");
+
+        builder.Property(s => s.BuildingCode)
+            .IsRequired()
+            .HasMaxLength(50)
+            .HasComment("Código del edificio de speculab");
 
         builder.HasOne(s => s.IssueType)
             .WithMany()

@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    partial class DatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20250904110402_AddBuildingCode")]
+    partial class AddBuildingCode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -330,6 +333,11 @@ namespace Infrastructure.Migrations
                     b.Property<int>("IssueTypeId")
                         .HasColumnType("int")
                         .HasComment("Id del tipo de incidencia");
+
+                    b.Property<double>("MaintenanceCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("float(18)")
+                        .HasComment("Costo de mantenimiento asociado a la solicitud");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()

@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    partial class DatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20250903121035_AddUsers")]
+    partial class AddUsers
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -207,9 +210,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasComment("Descripción de la incidencia");
 
-                    b.Property<int>("IncidenceId")
-                        .HasColumnType("int");
-
                     b.Property<int>("IssueTypeId")
                         .HasColumnType("int")
                         .HasComment("Id del tipo de incidencia");
@@ -312,12 +312,6 @@ namespace Infrastructure.Migrations
                     b.Property<int>("ApartmentAmount")
                         .HasColumnType("int");
 
-                    b.Property<string>("BuildingCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasComment("Código del edificio de speculab");
-
                     b.Property<DateTime>("Date")
                         .HasColumnType("datetime2")
                         .HasComment("Fecha de la solicitud");
@@ -330,6 +324,14 @@ namespace Infrastructure.Migrations
                     b.Property<int>("IssueTypeId")
                         .HasColumnType("int")
                         .HasComment("Id del tipo de incidencia");
+
+                    b.Property<double>("MaintenanceCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("float(18)")
+                        .HasComment("Costo de mantenimiento asociado a la solicitud");
+
+                    b.Property<int>("RequestId")
+                        .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
