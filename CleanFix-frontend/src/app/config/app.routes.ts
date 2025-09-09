@@ -1,12 +1,9 @@
-import { Login } from '@/ui/pages/login/login'
+import { Home } from '@/ui/pages/home/home'
 import { Routes } from '@angular/router'
 
 export const routes: Routes = [
   { path: '', redirectTo: '', pathMatch: 'full' },
-  {
-    path: '',
-    loadChildren: () => import('@/ui/pages/home/home.routes').then((r) => r.HOME_ROUTES),
-  },
+  { path: '', component: Home },
   {
     path: 'service-request',
     loadChildren: () =>
@@ -19,7 +16,10 @@ export const routes: Routes = [
     loadChildren: () =>
       import('@/ui/pages/management/management.routes').then((r) => r.MANAGEMENT_ROUTES),
   },
-  { path: 'login', component: Login },
+  {
+    path: 'auth',
+    loadChildren: () => import('@/ui/pages/auth/auth.routes').then((r) => r.AUTH_ROUTES),
+  },
   {
     path: '**',
     redirectTo: '',
