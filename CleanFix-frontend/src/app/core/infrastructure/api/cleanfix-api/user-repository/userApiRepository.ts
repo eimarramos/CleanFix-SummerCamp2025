@@ -1,21 +1,28 @@
 import { UserRepository } from '@/core/domain/repositories/UserRepository'
 import { environment } from 'src/environments/environment'
+import { HttpClient } from '@angular/common/http'
+import { firstValueFrom } from 'rxjs'
 
-const login = async (email: string, password: string, rememberMe: boolean) => {
-  const response = await fetch(`${environment.baseUrl}users/login`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email, password, rememberMe }),
-  })
+export class UserApiRepository implements UserRepository {
+  constructor(private http: HttpClient) {}
 
-  if (!response.ok) {
-    throw new Error('Error al iniciar sesión')
+  async login(email: string, password: string, rememberMe: boolean): Promise<void> {
+    await firstValueFrom(
+      this.http.post(
+        `${environment.baseUrl}auth/login`,
+        { email, password, rememberMe },
+        { withCredentials: true, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
   }
-}
 
-export const userApiRepository: UserRepository = {
-  login: login,
+  async refreshToken(): Promise<void> {
+    await firstValueFrom(
+      this.http.post(
+        `${environment.baseUrl}auth/refresh`,
+        {},
+        { withCredentials: true, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+  }
 }
