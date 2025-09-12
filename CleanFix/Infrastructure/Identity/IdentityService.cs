@@ -1,4 +1,5 @@
-﻿using Application.Common.Interfaces;
+﻿using Application.Auth.Queries.Me;
+using Application.Common.Interfaces;
 using Application.Common.Models;
 using Infrastructure.Identity.Abstracts;
 using Infrastructure.Identity.Constants;
@@ -49,7 +50,10 @@ public class IdentityService : IIdentityService
             return Result.Failure(new[] { $"Invalid login attempt for email: {email}" });
         }
 
-        var (jwtToken, expirationDateInUtc) = _authTokenProcessor.GenerateJwtToken(user);
+        // Obtener roles del usuario
+        var userRoles = await _userManager.GetRolesAsync(user);
+
+        var (jwtToken, expirationDateInUtc) = _authTokenProcessor.GenerateJwtToken(user, userRoles);
         var refreshTokenValue = _authTokenProcessor.GenerateRefreshToken();
 
         var refreshTokenExpirationDateInUtc = DateTime.UtcNow.AddDays(_jwtOptions.RefreshTokenExpirationDays);
@@ -88,7 +92,10 @@ public class IdentityService : IIdentityService
             return Result.Failure(["Refresh token is expired."]);
         }
 
-        var (jwtToken, expirationDateInUtc) = _authTokenProcessor.GenerateJwtToken(user);
+        // Obtener roles del usuario
+        var userRoles = await _userManager.GetRolesAsync(user);
+
+        var (jwtToken, expirationDateInUtc) = _authTokenProcessor.GenerateJwtToken(user, userRoles);
         var refreshTokenValue = _authTokenProcessor.GenerateRefreshToken();
 
         var refreshTokenExpirationDateInUtc = DateTime.UtcNow.AddDays(_jwtOptions.RefreshTokenExpirationDays);
@@ -108,19 +115,12 @@ public class IdentityService : IIdentityService
         return Result.Success();
     }
 
-    public async Task<string?> GetUserNameAsync(Guid userId)
-    {
-        var user = await _userManager.FindByIdAsync(userId.ToString());
-
-        return user?.UserName;
-    }
-
-    public async Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password)
+    public async Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string email, string password)
     {
         var user = new ApplicationUser
         {
             UserName = userName,
-            Email = userName,
+            Email = email,
         };
 
         var result = await _userManager.CreateAsync(user, password);
@@ -135,17 +135,20 @@ public class IdentityService : IIdentityService
         return user != null && await _userManager.IsInRoleAsync(user, role);
     }
 
-    public async Task<Result> DeleteUserAsync(Guid userId)
+    public async Task<UserInfoDto?> MeAsync(Guid userId)
     {
-        var user = await _userManager.FindByIdAsync(userId.ToString());
+        var appUser = await _userManager.FindByIdAsync(userId.ToString());
 
-        return user != null ? await DeleteUserAsync(user) : Result.Success();
-    }
+        if (appUser == null)
+            return null;
 
-    public async Task<Result> DeleteUserAsync(ApplicationUser user)
-    {
-        var result = await _userManager.DeleteAsync(user);
+        var roles = await _userManager.GetRolesAsync(appUser);
 
-        return result.ToApplicationResult();
+        return new UserInfoDto
+        {
+            Email = appUser.Email,
+            Username = appUser.UserName,
+            Roles = roles.ToList()
+        };
     }
 }

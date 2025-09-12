@@ -2,7 +2,6 @@
 using System.Text.Json;
 using Application.Common.Interfaces;
 using Application.Common.Models;
-using Microsoft.Extensions.Hosting;
 
 namespace Infrastructure.Repositories;
 public class ExternalIncidenceService : IExternalIncidenceRepository
@@ -20,8 +19,7 @@ public class ExternalIncidenceService : IExternalIncidenceRepository
         {
             var requestBody = new
             {
-                incidenceId,
-                companyName,
+                assignedCompany = companyName,
                 date = DateTime.UtcNow,
                 statusId = "R"
 
@@ -30,7 +28,7 @@ public class ExternalIncidenceService : IExternalIncidenceRepository
             var json = JsonSerializer.Serialize(requestBody);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PutAsync($"QFIncidence/{incidenceId}", content);
+            var response = await _httpClient.PatchAsync($"QFIncidence/{incidenceId}", content);
 
             if (response.IsSuccessStatusCode)
             {
